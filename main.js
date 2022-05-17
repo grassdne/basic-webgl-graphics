@@ -15,13 +15,12 @@ resizeCanvas();
 addEventListener('resize', resizeCanvas);
 
 window.onload = () => {
-    if (gl === null) return alert("Unable to initialize WebGL. Your browser/machine may not support it.");
     clearScene();
     draw();
 }
 
 function clearScene() {
-    //black, opaque
+    //opaque
     gl.clearColor(1.0, 1.0, 1.0, 1.0);
     //Clear color buffer
     gl.clear(gl.COLOR_BUFFER_BIT);
@@ -57,11 +56,16 @@ const vsSource =
     uniform vec2 view;
     uniform vec2 rad; // [min, max]
     uniform vec2 pos;
+
+    //TODO: move some calculations out of fragment shader into here and then pass to fragment shader as "varying"?
     
     void main() {
         gl_Position = vertexPosition;
     }
 `;
+
+// Is there a better place to put shader code?
+// Can I put it in a separate file and read it from JS?
 
 // language=GLSL
 const fsSource =
@@ -95,6 +99,7 @@ const fsSource =
         return x*x + y*y;
     }
 
+    // Why is this not built-in :|
     const float PI = 3.14159265358979;
 
     const float MAX_CIRCLES = 20.0;
@@ -103,85 +108,69 @@ const fsSource =
         return vec2(cos(2.0*PI * percent), sin(2.0*PI * percent)) * radius;
     }
     
+    // this is what this looks like on desmos
+    // https://www.desmos.com/calculator/z6lbe85x2o
+    // awful function name
     float smoothify(float x, float mod) {
         return (cos(2. * PI * x + mod) + 1.) / 2.;
     }
     
     void main() {
-        
         gl_FragColor = background;
-        
-        bool changed = false;
         
         for (float i = 0.0; i < MAX_CIRCLES; ++i) { // GLSL requires a constant max iterations
             if (i >= numCircles) break; // but we can break early
             float percentCircle = i/numCircles + time * spinSpeed;
             // absolute value cosine wave scrunched to be between [0.4, 1] multiplied by constant radius
-            // an increasing sizeSpotChange means the spots that have high and low sizes are changing
-            float r = mix(rad[0], rad[1], smoothify(percentCircle, sizeSpotChange));
+            // factoring in time in addition to where it is along the circle 
+            // means the places where blobs have high or low sizes are changing
+            float r = mix(rad[0], rad[1], smoothify(percentCircle, 2.0*time));
             if ((dist = distance(gl_FragCoord.xy, pos + aroundCircle(percentCircle, outerRadius))) < r) {
-                changed = true;
-                gl_FragColor *= mix(mix(colorA, colorB, smoothify(percentCircle, colorMod)), background, dist / r);
-                // overlapping colors stack multiplicatav
+                gl_FragColor *= mix(mix(colorA, colorB, smoothify(percentCircle, -2.0*time)), background, dist / r);
+                // overlapping colors stack multiplicatavely
             }
         }
-        if (!changed) discard;
     }
 `
-
+// too long and does too many things -- I should split this up
 function draw() {
     const MAX_CIRCLES = 20
 
     const program = initShaderProgram(vsSource, fsSource);
 
-    const payload = {
-        program: program,
-        uniforms: getUniforms(program, ['pos', 'rad', 'time','spinSpeed', 'outerRadius',
-            'numCircles', 'sizeSpotChange', 'view', 'colorA', 'colorB', 'colorMod']),
-        attributes: getAttributes(program, ['vertexPosition']),
-    }
+    const uniforms = getUniforms(program, ['pos', 'rad', 'time','spinSpeed', 'outerRadius', 'numCircles', 'view', 'colorA', 'colorB']);
+    const attributes = getAttributes(program, ['vertexPosition']);
+
     gl.useProgram(program);
 
-
     let spinSpeed;
+    let numCircles = 1;
+    let outerRadius;
+    let circleRadius;
+    let outerRadiusMod = 0.2;
+
+    ///// hook up inputs to variables ///////
+
     spinSpeedInput.oninput = () => {
-        gl.uniform1f(payload.uniforms.spinSpeed, spinSpeed = spinSpeedInput.value);
+        gl.uniform1f(uniforms.spinSpeed, spinSpeed = spinSpeedInput.value);
     }
     spinSpeedInput.oninput();
 
     colorAInput.oninput = () => {
-        gl.uniform4f(payload.uniforms.colorA, ...hexToRGBA(colorAInput.value));
+        // "...array" splits array into arguments!
+        gl.uniform4f(uniforms.colorA, ...hexToRGBA(colorAInput.value));
     }
     colorAInput.oninput();
 
     colorBInput.oninput = () => {
-        gl.uniform4f(payload.uniforms.colorB, ...hexToRGBA(colorBInput.value));
+        gl.uniform4f(uniforms.colorB, ...hexToRGBA(colorBInput.value));
     }
     colorBInput.oninput();
 
-    let numCircles = 1;
     numCirclesInput.oninput = () => {
-        gl.uniform1f(payload.uniforms.numCircles, numCircles = numCirclesInput.value);
+        gl.uniform1f(uniforms.numCircles, numCircles = numCirclesInput.value);
     }
     numCirclesInput.oninput();
-
-    document.onclick1 = () => {
-        if (numCircles < MAX_CIRCLES)
-            gl.uniform1f(payload.uniforms.numCircles, ++numCircles);
-        else if (spinSpeed < 2)
-            gl.uniform1f(payload.uniforms.spinSpeed, spinSpeed+=0.1);
-        else {
-            gl.uniform1f(payload.uniforms.numCircles, (numCircles = 1));
-            gl.uniform1f(payload.uniforms.spinSpeed, (spinSpeed = 0.2));
-        }
-            
-    }
-
-    let outerRadius;
-
-    const doMoveCenterXY = false;
-
-    let circleRadius;
 
     let circleRadiusModMin;
     let circleRadiusModMax;
@@ -194,17 +183,31 @@ function draw() {
         calcRelativeSizes();
     }
 
-    let outerRadiusMod = 0.2;
     outerRadiusInput.oninput = () => {
         outerRadiusMod = outerRadiusInput.value;
         calcRelativeSizes();
     }
 
+    function calcRelativeSizes() {
+        gl.uniform2f(uniforms.view, canvas.width, canvas.height);
+        dcx = canvas.width / 5;
+        dcy = canvas.height / 7;
+        cx = canvas.width / 2;
+        cy = canvas.height / 2;
+        outerRadius = Math.min(canvas.width, canvas.height) * outerRadiusMod;
+        gl.uniform1f(uniforms.outerRadius, outerRadius);
+        circleRadius = {min: outerRadius * circleRadiusModMin, max: outerRadius * circleRadiusModMax};
+        gl.uniform2f(uniforms.rad, circleRadius.min, circleRadius.max);
+    }
+
+    ////////////////////////////////////////
+
+    const ENABLE_MOVING_CENTER = false;
+
     let r = 0;
     let dr = 2;
 
     let colorMod = 0;
-    let deltaColorMod = -2;
 
     let cx = canvas.width / 2;
     let cy = canvas.height / 2;
@@ -215,17 +218,6 @@ function draw() {
     circleMaxRadiusInput.oninput();
     outerRadiusInput.oninput();
 
-    function calcRelativeSizes() {
-        gl.uniform2f(payload.uniforms.view, canvas.width, canvas.height);
-        dcx = canvas.width / 5;
-        dcy = canvas.height / 7;
-        cx = canvas.width / 2;
-        cy = canvas.height / 2;
-        outerRadius = Math.min(canvas.width, canvas.height) * outerRadiusMod;
-        gl.uniform1f(payload.uniforms.outerRadius, outerRadius);
-        circleRadius = {min: outerRadius * circleRadiusModMin, max: outerRadius * circleRadiusModMax};
-        gl.uniform2f(payload.uniforms.rad, circleRadius.min, circleRadius.max);
-    }
     calcRelativeSizes()
     addEventListener("resize", calcRelativeSizes);
 
@@ -234,9 +226,7 @@ function draw() {
         const dt = (timestamp - prev) / 1000;
         prev = timestamp;
 
-        r += dr * dt;
-
-        if (doMoveCenterXY) {
+        if (ENABLE_MOVING_CENTER) {
             const nextcx = cx + dcx * dt;
             if (nextcx + outerRadius + circleRadius.min > canvas.width || nextcx < outerRadius + circleRadius.min) dcx = -dcx;
             else cx = nextcx;
@@ -245,22 +235,19 @@ function draw() {
             if (nextcy + outerRadius + circleRadius.min > canvas.height || nextcy < outerRadius + circleRadius.min) dcy = -dcy;
             else cy = nextcy;
         }
-        gl.uniform2f(payload.uniforms.pos, cx, cy);
+        gl.uniform2f(uniforms.pos, cx, cy);
 
-        gl.uniform1f(payload.uniforms.sizeSpotChange, r);
-        colorMod += deltaColorMod * dt;
-        gl.uniform1f(payload.uniforms.colorMod, colorMod);
-        gl.uniform1f(payload.uniforms.time, timestamp / 1000);
+        gl.uniform1f(uniforms.time, timestamp / 1000);
 
-        drawScene(payload, initBuffers());
+        drawScene(attributes, initBuffers());
         requestAnimationFrame(update);
     }
+    //For the furst update frame I set the `prev` variable so it isn't undefined
     requestAnimationFrame(timestamp => {
         prev = timestamp;
         update(timestamp);
-    })
+    });
 }
-
 
 function initBuffers() {
     const positionBuffer = gl.createBuffer();
@@ -270,7 +257,7 @@ function initBuffers() {
         1, 1,
         -1, 1,
         1, -1,
-        -1, -1,
+        -1, -1
     ];
 
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
@@ -280,8 +267,12 @@ function initBuffers() {
     };
 }
 
-function drawScene(program, buffers) {
-    gl.clearColor(0.0, 0.0, 0.0, 1.0);
+
+// a lot of boilerplate
+// followed tutorial at 
+
+function drawScene(attributes, buffers) {
+    gl.clearColor(1.0, 1.0, 1.0, 1.0);
     //full clear
     gl.clearDepth(1.0);
     //enable depth testing 
@@ -289,7 +280,7 @@ function drawScene(program, buffers) {
     //close obscures far
     gl.depthFunc(gl.LEQUAL);
 
-    //gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
     {
         const numComponents = 2;
@@ -298,9 +289,9 @@ function drawScene(program, buffers) {
         const stride = 0;
         const offset = 0;
         gl.bindBuffer(gl.ARRAY_BUFFER, buffers.position);
-        gl.vertexAttribPointer(program.attributes.vertexPosition, numComponents, type, normalize, stride, offset);
+        gl.vertexAttribPointer(attributes.vertexPosition, numComponents, type, normalize, stride, offset);
         
-        gl.enableVertexAttribArray(program.attributes.vertexPosition);
+        gl.enableVertexAttribArray(attributes.vertexPosition);
     }
 
 
