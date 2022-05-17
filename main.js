@@ -38,6 +38,15 @@ function getAttributes(program, names) {
     return attribs
 }
 
+function hexToRGBA(hex) {
+    const vals = [];
+    for (let i = 0; i < 3; ++i) {
+        vals[i] = parseInt(hex.slice(i*2+1, i*2+3), 16) / 0xFF;
+    }
+    vals[3] = 1.0;
+    return vals;
+}
+
 // language=GLSL
 const vsSource =
 `
@@ -68,6 +77,11 @@ const fsSource =
     uniform float numCircles;
 
     uniform float sizeSpotChange;
+    
+    uniform vec4 colorA;
+    uniform vec4 colorB;
+    
+    uniform float colorMod;
 
     float dist;
 
@@ -80,28 +94,37 @@ const fsSource =
         return x*x + y*y;
     }
 
-    const float PI = 3.14159265358979; //Why is this not builtin :/
-    const float TAU = 2.0 * PI;
+    const float PI = 3.14159265358979;
 
-    #define MAX_CIRCLES 20.
+    const float MAX_CIRCLES = 20.0;
 
     vec2 aroundCircle(float percent, float radius) {
-        return vec2(cos(TAU * percent), sin(TAU * percent)) * radius;
+        return vec2(cos(2.0*PI * percent), sin(2.0*PI * percent)) * radius;
+    }
+    
+    float smoothify(float x, float mod) {
+        return (cos(2. * PI * x + mod) + 1.) / 2.;
     }
     
     void main() {
+        
         gl_FragColor = background;
         
+        bool changed = false;
+        
         for (float i = 0.0; i < MAX_CIRCLES; ++i) { // GLSL requires a constant max iterations
-            if (i >= numCircles) break; // but I can break early
+            if (i >= numCircles) break; // but we can break early
             float percentCircle = i/numCircles + time * spinSpeed;
             // absolute value cosine wave scrunched to be between [0.4, 1] multiplied by constant radius
             // an increasing sizeSpotChange means the spots that have high and low sizes are changing
-            float r = mix(rad[0], rad[1], abs(cos(percentCircle * PI + sizeSpotChange)));
+            float r = mix(rad[0], rad[1], smoothify(percentCircle, sizeSpotChange));
             if ((dist = distance(gl_FragCoord.xy, pos + aroundCircle(percentCircle, outerRadius))) < r) {
-                gl_FragColor *= mix(vec4(0.5, abs(sin(PI * percentCircle)), abs(cos(PI * percentCircle)), 1.0), background, dist / (r));
+                changed = true;
+                gl_FragColor *= mix(mix(colorA, colorB, smoothify(percentCircle, colorMod)), background, dist / r);
+                // overlapping colors stack multiplicatav
             }
         }
+        if (!changed) discard;
     }
 `
 
@@ -112,19 +135,36 @@ function draw() {
 
     const payload = {
         program: program,
-        uniforms: getUniforms(program, ['pos', 'rad', 'time', 'spinSpeed', 'outerRadius', 'numCircles', 'sizeSpotChange', 'view']),
+        uniforms: getUniforms(program, ['pos', 'rad', 'time','spinSpeed', 'outerRadius',
+            'numCircles', 'sizeSpotChange', 'view', 'colorA', 'colorB', 'colorMod']),
         attributes: getAttributes(program, ['vertexPosition']),
     }
     gl.useProgram(program);
 
 
-    let spinSpeed = 0.2;
-    gl.uniform1f(payload.uniforms.spinSpeed, spinSpeed);
+    let spinSpeed;
+    spinSpeedInput.oninput = () => {
+        gl.uniform1f(payload.uniforms.spinSpeed, spinSpeed = spinSpeedInput.value);
+    }
+    spinSpeedInput.oninput();
 
-    let numCircles = 14;
-    gl.uniform1f(payload.uniforms.numCircles, numCircles);
+    colorAInput.oninput = () => {
+        gl.uniform4f(payload.uniforms.colorA, ...hexToRGBA(colorAInput.value));
+    }
+    colorAInput.oninput();
 
-    document.onclick = () => {
+    colorBInput.oninput = () => {
+        gl.uniform4f(payload.uniforms.colorB, ...hexToRGBA(colorBInput.value));
+    }
+    colorBInput.oninput();
+
+    let numCircles = 1;
+    numCirclesInput.oninput = () => {
+        gl.uniform1f(payload.uniforms.numCircles, numCircles = numCirclesInput.value);
+    }
+    numCirclesInput.oninput();
+
+    document.onclick1 = () => {
         if (numCircles < MAX_CIRCLES)
             gl.uniform1f(payload.uniforms.numCircles, ++numCircles);
         else if (spinSpeed < 2)
@@ -136,19 +176,43 @@ function draw() {
             
     }
 
-    let r = 20;
+    let outerRadius;
+
+    const doMoveCenterXY = false;
+
+    let circleRadius;
+
+    let circleRadiusModMin;
+    let circleRadiusModMax;
+    circleMinRadiusInput.oninput = () => {
+        circleRadiusModMin = circleMinRadiusInput.value;
+        calcRelativeSizes();
+    }
+    circleMaxRadiusInput.oninput = () => {
+        circleRadiusModMax = circleMaxRadiusInput.value;
+        calcRelativeSizes();
+    }
+
+    let outerRadiusMod = 0.2;
+    outerRadiusInput.oninput = () => {
+        outerRadiusMod = outerRadiusInput.value;
+        calcRelativeSizes();
+    }
+
+    let r = 0;
     let dr = 2;
+
+    let colorMod = 0;
+    let deltaColorMod = -2;
 
     let cx = canvas.width / 2;
     let cy = canvas.height / 2;
     let dcx = 1;
     let dcy = 1;
 
-    let outerRadius;
-
-    const doMoveCenterXY = false;
-
-    let circleRadius;
+    circleMinRadiusInput.oninput();
+    circleMaxRadiusInput.oninput();
+    outerRadiusInput.oninput();
 
     function calcRelativeSizes() {
         gl.uniform2f(payload.uniforms.view, canvas.width, canvas.height);
@@ -156,9 +220,9 @@ function draw() {
         dcy = canvas.height / 7;
         cx = canvas.width / 2;
         cy = canvas.height / 2;
-        outerRadius = Math.min(canvas.width, canvas.height) / 4;
+        outerRadius = Math.min(canvas.width, canvas.height) * outerRadiusMod;
         gl.uniform1f(payload.uniforms.outerRadius, outerRadius);
-        circleRadius = {min: outerRadius / 6, max: outerRadius / 3};
+        circleRadius = {min: outerRadius * circleRadiusModMin, max: outerRadius * circleRadiusModMax};
         gl.uniform2f(payload.uniforms.rad, circleRadius.min, circleRadius.max);
     }
     calcRelativeSizes()
@@ -183,6 +247,8 @@ function draw() {
         gl.uniform2f(payload.uniforms.pos, cx, cy);
 
         gl.uniform1f(payload.uniforms.sizeSpotChange, r);
+        colorMod += deltaColorMod * dt;
+        gl.uniform1f(payload.uniforms.colorMod, colorMod);
         gl.uniform1f(payload.uniforms.time, timestamp / 1000);
 
         drawScene(payload, initBuffers());
@@ -222,7 +288,7 @@ function drawScene(program, buffers) {
     //close obscures far
     gl.depthFunc(gl.LEQUAL);
 
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    //gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
     {
         const numComponents = 2;

@@ -5,11 +5,41 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WebGL Testing</title>
-    <link rel="stylesheet" href="styles.css">
     <script src="main.js" defer></script>
-    <script ></script>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+    <div class="inputDiv">
+        <label for="circleMinRadiusInput">Bubble Minimum Size</label>
+        <input type="range" id="circleMinRadiusInput" min="0" max="1" step="0.001" value="0.15">
+    </div>
+    <div class="inputDiv">
+        <label for="circleMaxRadiusInput">Bubble Maximum Size</label>
+        <input type="range" id="circleMaxRadiusInput" min="0" max="1" step="0.001" value="0.75">
+    </div>
+    <div class="inputDiv">
+        <label for="numCirclesInput">Bubble Count</label>
+        <input type="range" id="numCirclesInput" min="1" max="20" value="9">
+    </div>
+    <div class="inputDiv">
+        <label for="spinSpeedInput">Spin Speed</label>
+        <input type="range" id="spinSpeedInput" min="0" max="1.5" step="0.001" value="0.2">
+    </div>
+    <div class="inputDiv">
+        <label for="outerRadiusInput">Scale</label>
+        <input type="range" id="outerRadiusInput" min="0" max="0.5" step="0.001" value="0.25">
+    </div>
+    <div style="display: inline-block">
+        <div class="inputDiv" style="width: 100px">
+            <label for="colorAInput">Color A</label>
+            <input type="color" id="colorAInput" value="#1f69ff">
+        </div>
+        <div class="inputDiv" style="width: 100px">
+            <label for="colorBInput">Color B</label>
+            <input type="color" id="colorBInput" value="#00c213">
+        </div>
+
+    </div>
     <canvas id="glcanvas" width="800" height="600"></canvas>
 
 </body>

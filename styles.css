@@ -1,0 +1,20 @@
+
+.inputDiv {
+    max-width: 300px;
+    width: 300px;
+    margin-bottom: 15px;
+    display: inline-block;
+    margin-right: 10px;
+}
+
+.inputDiv {}
+
+.inputDiv input {
+    width: 100%;
+}
+
+.inputDiv label {
+    display: block;
+    text-align: center;
+    font-weight: bold;
+}
