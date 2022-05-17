@@ -3,6 +3,7 @@ const canvas = glcanvas;
 
 const gl = canvas.getContext("webgl");
 
+
 const root = document.querySelector("html");
 function resizeCanvas() {
     canvas.width = root.clientWidth;
