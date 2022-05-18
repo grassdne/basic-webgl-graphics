@@ -47,92 +47,9 @@ function hexToRGBA(hex) {
     return vals;
 }
 
+const vsSource = document.getElementById("vertexShader").innerText;
+const fsSource = document.getElementById("fragmentShader").innerText;
 
-//getting injected glsl highlighting in editors
-
-const glsl = s => s;
-
-const vsSource = glsl`
-    attribute vec4 vertexPosition;
-    uniform float time;
-    uniform float outerRadius;
-    uniform vec2 view;
-    uniform vec2 rad; // [min, max]
-    uniform vec2 pos;
-
-    //TODO: move some calculations out of fragment shader into here and then pass to fragment shader as "varying"?
-    
-    void main() {
-        gl_Position = vertexPosition;
-    }
-`;
-
-// Is there a better place to put shader code?
-// Can I put it in a separate file and read it from JS?
-
-const fsSource = glsl`
-    precision highp float;
-
-    uniform vec2 pos;
-    uniform vec2 rad; // [min, max]
-    uniform float time;
-    uniform float spinSpeed;
-    
-    uniform float outerRadius;
-
-    uniform float numCircles;
-
-    uniform float sizeSpotChange;
-    
-    uniform vec4 colorA;
-    uniform vec4 colorB;
-    
-    uniform float colorMod;
-
-    float dist;
-
-    vec4 background = vec4(1.0, 1.0, 1.0, 1.);
-
-    //Consider using distanceSquared instead of distance for efficiency
-    float distanceSquared(vec2 a, vec2 b) {
-        float x = a.x - b.x;
-        float y = a.y - b.y;
-        return x*x + y*y;
-    }
-
-    // Why is this not built-in :|
-    const float PI = 3.14159265358979;
-
-    const float MAX_CIRCLES = 20.0;
-
-    vec2 aroundCircle(float percent, float radius) {
-        return vec2(cos(2.0*PI * percent), sin(2.0*PI * percent)) * radius;
-    }
-    
-    // this is what this looks like on desmos
-    // https://www.desmos.com/calculator/z6lbe85x2o
-    // awful function name
-    float smoothify(float x, float mod) {
-        return (cos(2. * PI * x + mod) + 1.) / 2.;
-    }
-    
-    void main() {
-        gl_FragColor = background;
-        
-        for (float i = 0.0; i < MAX_CIRCLES; ++i) { // GLSL requires a constant max iterations
-            if (i >= numCircles) break; // but we can break early
-            float percentCircle = i/numCircles + time * spinSpeed;
-            // absolute value cosine wave scrunched to be between [0.4, 1] multiplied by constant radius
-            // factoring in time in addition to where it is along the circle 
-            // means the places where blobs have high or low sizes are changing
-            float r = mix(rad[0], rad[1], smoothify(percentCircle, 2.0*time));
-            if ((dist = distance(gl_FragCoord.xy, pos + aroundCircle(percentCircle, outerRadius))) < r) {
-                gl_FragColor *= mix(mix(colorA, colorB, smoothify(percentCircle, -2.0*time)), background, dist / r);
-                // overlapping colors stack multiplicatavely
-            }
-        }
-    }
-`
 // too long and does too many things -- I should split this up
 function draw() {
     const MAX_CIRCLES = 20
@@ -205,6 +122,11 @@ function draw() {
 
     const ENABLE_MOVING_CENTER = false;
 
+    let r = 0;
+    let dr = 2;
+
+    let colorMod = 0;
+
     let cx = canvas.width / 2;
     let cy = canvas.height / 2;
     let dcx = 1;
@@ -238,7 +160,7 @@ function draw() {
         drawScene(attributes, initBuffers());
         requestAnimationFrame(update);
     }
-    //For the first update frame I set the `prev` variable so it isn't undefined
+    //For the furst update frame I set the `prev` variable so it isn't undefined
     requestAnimationFrame(timestamp => {
         prev = timestamp;
         update(timestamp);
@@ -265,6 +187,7 @@ function initBuffers() {
 
 
 // a lot of boilerplate
+// followed tutorial at 
 
 function drawScene(attributes, buffers) {
     gl.clearColor(1.0, 1.0, 1.0, 1.0);
@@ -324,7 +247,7 @@ function initShaderProgram(vsSource, fsSource) {
     gl.linkProgram(shaderProgram);
 
     if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
-        console.error("Unable to initialize the shader program: " + gl.getProgramInfoLog(shaderProgram));
+        console.error("Unable to initalize the shader program: " + gl.getProgramInfoLog(shaderProgram));
         return null;
     }
     
