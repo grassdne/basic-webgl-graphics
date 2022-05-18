@@ -47,9 +47,12 @@ function hexToRGBA(hex) {
     return vals;
 }
 
-// language=GLSL
-const vsSource =
-`
+
+//getting injected glsl highlighting in editors
+
+const glsl = s => s;
+
+const vsSource = glsl`
     attribute vec4 vertexPosition;
     uniform float time;
     uniform float outerRadius;
@@ -67,9 +70,7 @@ const vsSource =
 // Is there a better place to put shader code?
 // Can I put it in a separate file and read it from JS?
 
-// language=GLSL
-const fsSource =
-`
+const fsSource = glsl`
     precision highp float;
 
     uniform vec2 pos;
@@ -204,11 +205,6 @@ function draw() {
 
     const ENABLE_MOVING_CENTER = false;
 
-    let r = 0;
-    let dr = 2;
-
-    let colorMod = 0;
-
     let cx = canvas.width / 2;
     let cy = canvas.height / 2;
     let dcx = 1;
@@ -242,7 +238,7 @@ function draw() {
         drawScene(attributes, initBuffers());
         requestAnimationFrame(update);
     }
-    //For the furst update frame I set the `prev` variable so it isn't undefined
+    //For the first update frame I set the `prev` variable so it isn't undefined
     requestAnimationFrame(timestamp => {
         prev = timestamp;
         update(timestamp);
@@ -269,7 +265,6 @@ function initBuffers() {
 
 
 // a lot of boilerplate
-// followed tutorial at 
 
 function drawScene(attributes, buffers) {
     gl.clearColor(1.0, 1.0, 1.0, 1.0);
@@ -329,7 +324,7 @@ function initShaderProgram(vsSource, fsSource) {
     gl.linkProgram(shaderProgram);
 
     if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
-        console.error("Unable to initalize the shader program: " + gl.getProgramInfoLog(shaderProgram));
+        console.error("Unable to initialize the shader program: " + gl.getProgramInfoLog(shaderProgram));
         return null;
     }
     
